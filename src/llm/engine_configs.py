@@ -22,7 +22,7 @@ GCP_PROJECT = os.getenv("GCP_PROJECT")
 GCP_REGION = os.getenv("GCP_REGION")
 GCP_CREDENTIALS = os.getenv("GCP_CREDENTIALS")
 
-if GCP_CREDENTIALS and GCP_PROJECT and GCP_REGION:
+if not os.getenv("CHESS_LOCAL_MODEL") and GCP_CREDENTIALS and GCP_PROJECT and GCP_REGION:
     aiplatform.init(
     project=GCP_PROJECT,
     location=GCP_REGION,

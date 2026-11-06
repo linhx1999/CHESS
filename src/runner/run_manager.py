@@ -38,6 +38,10 @@ class RunManager:
         run_folder_name = str(self.args.run_start_time)
         run_folder_path = Path(self.RESULT_ROOT_PATH) / data_mode / setting_name / dataset_name / run_folder_name
         
+        if getattr(self.args, "output_dir", None):
+            run_folder_path = Path(self.args.output_dir)
+            if run_folder_path.exists() and any(run_folder_path.iterdir()):
+                raise FileExistsError(f"Output directory is not empty: {run_folder_path}; choose a new RUN_ID")
         run_folder_path.mkdir(parents=True, exist_ok=True)
         
         arg_file_path = run_folder_path / "-args.json"
@@ -208,7 +212,7 @@ class RunManager:
                         if not isinstance(result, dict):
                             continue
                         self.statistics_manager.update_stats(db_id, question_id, validation_for, result)
-            if "final_SQL" in step:
+            if isinstance(step.get("final_SQL"), dict):
                 self.statistics_manager.update_stats(db_id, question_id, "final_SQL", step["final_SQL"])
                 self.update_final_predictions(question_id, step["final_SQL"]["PREDICTED_SQL"], db_id)
         self.statistics_manager.dump_statistics_to_file()
@@ -234,6 +238,8 @@ class RunManager:
         for file in os.listdir(self.result_directory):
             if file.endswith(".json") and "_" in file:
                 _index = file.find("_")
+                if not file[:_index].isdigit():
+                    continue
                 question_id = int(file[:_index])
                 db_id = file[_index + 1:-5]
                 with open(os.path.join(self.result_directory, file), 'r') as f:

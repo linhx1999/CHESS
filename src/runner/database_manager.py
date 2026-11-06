@@ -18,7 +18,7 @@ from database_utils.db_catalog.search import query_vector_db
 from database_utils.db_catalog.preprocess import EMBEDDING_FUNCTION
 from database_utils.db_catalog.csv_utils import load_tables_description
 
-load_dotenv(override=True)
+load_dotenv(override=not bool(os.getenv("CHESS_LOCAL_MODEL")))
 DB_ROOT_PATH = Path(os.getenv("DB_ROOT_PATH"))
 
 INDEX_SERVER_HOST = os.getenv("INDEX_SERVER_HOST")

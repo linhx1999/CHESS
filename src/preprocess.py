@@ -7,7 +7,7 @@ import logging
 from database_utils.db_values.preprocess import make_db_lsh
 from database_utils.db_catalog.preprocess import make_db_context_vec_db
 
-load_dotenv(override=True)
+load_dotenv(override=not bool(os.getenv("CHESS_LOCAL_MODEL")))
 NUM_WORKERS = 1
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

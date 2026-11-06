@@ -102,3 +102,65 @@ If you find this repository helpful, please cite the following paper:
   year={2024}
 }
 ```
+## Local models and BIRD Dev
+
+`run_bird_dev.sh` runs the existing IR → SS → CG pipeline using local
+OpenAI-compatible generation and embedding services. Install this project's
+`requirements.txt` in its own Python environment first (Python 3.10+).
+
+Edit the literal assignments at the top of the script:
+
+- `MODEL_NAME` and `OPENAI_API_BASE`: generation model and service; default
+  `Ministral-3-14B-Reasoning-2512` at `http://127.0.0.1:8000/v1`.
+- `TEMPERATURE=0`: overrides every generation stage, including agent routing.
+- `MAX_TOKENS=16384`: maximum output tokens per request. The service controls
+  total context length; the client does not silently truncate prompts.
+- `EMBEDDING_MODEL` and `EMBEDDING_BASE_URL`: default local BGE-M3 at
+  `http://127.0.0.1:9000/v1`. Use the model identifier exposed by your server.
+- `DATA_PATH` and `DB_ROOT_DIRECTORY`: BIRD JSON and its `dev_databases`
+  directory; defaults reuse the neighboring SAGE-SQL dataset.
+- `DATASET`, `RUN_ID`, `WORKERS`, and `CONFIG`: output naming,
+  concurrency (default 1), and native pipeline configuration. The script uses `python3`.
+
+```bash
+bash run_bird_dev.sh
+# Optional overrides; initialization can also be edited directly.
+bash run_bird_dev.sh --temperature 0 --max_tokens 8192 --num_workers 2
+bash run_bird_dev.sh --help
+```
+
+Both model APIs use `EMPTY` as the default key. If authentication is required,
+configure the corresponding key locally; do not commit credentials. Existing
+cloud-model entry points remain available when local mode is not enabled.
+
+Before inference, the script builds missing context vector and LSH indexes
+serially inside the database directories. This first run calls the embedding
+service and needs write access to those directories. Complete compatible indexes
+are reused. An unknown, incomplete, or different-model vector index causes an
+error; explicitly move that index aside before rebuilding. The embedding service
+receives text, and the client uses small batches. The original retrieval
+thresholds, prompts, and candidate counts are unchanged.
+
+Results are written to
+`outputs/chess_bird_dev_Ministral-3-14B-Reasoning-2512_run_1/` by default. The
+primary prediction JSON has exactly the same basename as the directory; no
+`predict_dev.json` is produced. CHESS's native logs and intermediate files remain
+in the same directory. A nonempty output directory is rejected: change `RUN_ID`
+or pass `--output_dir` for another run.
+
+The primary JSON contains ordered zero-based keys and values formatted as
+`SQL\t----- bird -----\tdatabase_id`. Failed or unfinished records retain their
+positions and database IDs with invalid SQL placeholders. To evaluate, set
+`predicted_sql_path` in SAGE-SQL's `eval_bird_dev.sh` to this JSON's absolute path,
+then run that script from the SAGE-SQL directory. Use the full matching BIRD Dev
+input when evaluating against its full gold files. The SAGE-SQL evaluator itself
+is unchanged.
+
+Offline checks (no model requests or database indexing):
+
+```bash
+python -m unittest discover -s tests -v
+python -m compileall -q src tests
+bash -n run_bird_dev.sh
+git diff --check
+```

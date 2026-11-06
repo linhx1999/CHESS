@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List
 
-from runner.run_manager import RunManager
+from local_runtime import add_local_arguments, configure_local_runtime, ensure_indexes, export_bird_predictions
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -21,7 +21,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--num_workers', type=int, default=1, help="Number of workers to use.")
     parser.add_argument('--log_level', type=str, default='warning', help="Logging level.")
     parser.add_argument('--pick_final_sql', type=bool, default=False, help="Pick the final SQL from the generated SQLs.")
+    add_local_arguments(parser)
     args = parser.parse_args()
+    configure_local_runtime(args, parser)
 
     args.run_start_time = datetime.now().isoformat()
     with open(args.config, 'r') as file:
@@ -50,10 +52,18 @@ def main():
     args = parse_arguments()
     dataset = load_dataset(args.data_path)
 
+    from runner.run_manager import RunManager
+
     run_manager = RunManager(args)
+    if args.local_model:
+        ensure_indexes(dataset, args.db_root_directory)
     run_manager.initialize_tasks(dataset)
-    run_manager.run_tasks()
-    run_manager.generate_sql_files()
+    try:
+        run_manager.run_tasks()
+        run_manager.generate_sql_files()
+    finally:
+        if args.output_dir:
+            export_bird_predictions(dataset, run_manager.result_directory)
 
 if __name__ == '__main__':
     main()

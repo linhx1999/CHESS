@@ -1,3 +1,8 @@
+import os
+from copy import deepcopy
+
+from local_runtime import local_chat_params
+
 from typing import Any, Dict, List
 
 from langchain_core.exceptions import OutputParserException
@@ -22,13 +27,19 @@ def get_llm_chain(engine_name: str, temperature: float = 0, base_uri: str = None
     Raises:
         ValueError: If the engine is not supported.
     """
+    local_params = local_chat_params()
+    if local_params is not None:
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(**local_params)
+
     if engine_name not in ENGINE_CONFIGS:
         raise ValueError(f"Engine {engine_name} not supported")
     
     config = ENGINE_CONFIGS[engine_name]
     constructor = config["constructor"]
-    params = config["params"]
-    if temperature:
+    params = deepcopy(config["params"])
+    if temperature is not None:
         params["temperature"] = temperature
     
     # Adjust base_uri if provided
@@ -71,11 +82,13 @@ def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[s
             output = chain.invoke(request_kwargs)
             if isinstance(output, str):
                 if output.strip() == "":
-                    engine = get_llm_chain("gemini-1.5-flash")
+                    if not os.getenv("CHESS_LOCAL_MODEL"):
+                        engine = get_llm_chain("gemini-1.5-flash")
                     raise OutputParserException("Empty output")
             else:
                 if output.content.strip() == "":    
-                    engine = get_llm_chain("gemini-1.5-flash")
+                    if not os.getenv("CHESS_LOCAL_MODEL"):
+                        engine = get_llm_chain("gemini-1.5-flash")
                     raise OutputParserException("Empty output")
             output = parser.invoke(output)
             logger.log_conversation(
