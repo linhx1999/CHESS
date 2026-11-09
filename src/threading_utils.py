@@ -42,7 +42,7 @@ def ordered_concurrent_function_calls(call_list: list) -> list:
         return []
 
     result_queue = queue.Queue()
-    with ThreadPoolExecutor(max_workers=len(call_list)) as executor:
+    with ThreadPoolExecutor(max_workers=len(8)) as executor:
         for idx, call in enumerate(call_list):
             func = _threaded(call['function'])
             kwargs = call['kwargs']

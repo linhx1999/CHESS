@@ -68,8 +68,8 @@ def local_chat_params() -> dict | None:
         'openai_api_key': os.getenv('OPENAI_API_KEY') or 'EMPTY',
         'temperature': float(os.environ.get('CHESS_TEMPERATURE', '0')),
         'max_tokens': int(os.environ.get('CHESS_MAX_TOKENS', '16384')),
-        'timeout': float(os.environ.get('CHESS_REQUEST_TIMEOUT', '120')),
-        'max_retries': int(os.environ.get('CHESS_MAX_RETRIES', '2')),
+        'timeout': float(os.environ.get('CHESS_REQUEST_TIMEOUT', '240')),
+        'max_retries': int(os.environ.get('CHESS_MAX_RETRIES', '0')),
     }
 
 
