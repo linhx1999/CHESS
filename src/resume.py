@@ -70,10 +70,15 @@ def read_history(path):
 
 
 def restore_arguments(args):
-    """The saved run owns model, data and configuration; no credentials are stored."""
+    """Automatically resume an existing run using its saved configuration."""
+    args.resume = False
     if not args.output_dir:
-        raise ValueError("--resume requires --output_dir")
-    saved = json.loads((Path(args.output_dir) / "-args.json").read_text())
+        return
+    saved_path = Path(args.output_dir) / "-args.json"
+    if not saved_path.is_file():
+        return
+    saved = json.loads(saved_path.read_text())
+    args.resume = True
     for name, value in saved.items():
         if name not in {"output_dir", "resume", "num_workers", "log_level"}:
             setattr(args, name, value)

@@ -85,22 +85,31 @@ class ResumeTests(unittest.TestCase):
                      'config': {'setting_name': 'native'}, 'num_workers': 8}
             path = Path(tmp) / '-args.json'
             path.write_text(json.dumps(saved))
-            args = types.SimpleNamespace(output_dir=tmp, resume=True, local_model='other',
+            args = types.SimpleNamespace(output_dir=tmp, local_model='other',
                                          num_workers=2)
             resume.restore_arguments(args)
+            self.assertTrue(args.resume)
             self.assertEqual(args.local_model, 'qwen')
             self.assertEqual(args.config, saved['config'])
             self.assertEqual(args.num_workers, 2)
             self.assertEqual(json.loads(path.read_text()), saved)
 
-    def test_resume_rebuilds_predictions_and_keeps_histories(self):
+    def test_new_run_does_not_restore_configuration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for output_dir in (None, tmp, str(Path(tmp) / 'new')):
+                args = types.SimpleNamespace(output_dir=output_dir, local_model='new-model')
+                resume.restore_arguments(args)
+                self.assertFalse(args.resume)
+                self.assertEqual(args.local_model, 'new-model')
+
+    def test_resume_deletes_failed_files_and_keeps_successful_histories(self):
         cls, _ = manager_class()
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             good, bad = root / '0_db.json', root / '1_db.json'
             good.write_text(json.dumps(history()))
             bad.write_text(json.dumps(history()[1:]))
-            original = {p: p.read_bytes() for p in (good, bad)}
+            original = good.read_bytes()
             (root / '-args.json').write_text('{"old": true}')
             (root / '-predictions.json').write_text('{"1": "interrupted write')
             args = types.SimpleNamespace(output_dir=tmp, resume=True, data_mode='dev',
@@ -111,8 +120,8 @@ class ResumeTests(unittest.TestCase):
             predictions = json.loads((root / '-predictions.json').read_text())
             self.assertEqual(predictions, {'0': 'SELECT 1\t----- bird -----\tdb', '1': 0, '2': 0})
             self.assertEqual((root / '-args.json').read_text(), '{"old": true}')
-            for p, content in original.items():
-                self.assertEqual(p.read_bytes(), content)
+            self.assertEqual(good.read_bytes(), original)
+            self.assertFalse(bad.exists())
             args.resume = False
             with self.assertRaises(FileExistsError):
                 cls(args)

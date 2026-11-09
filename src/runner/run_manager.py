@@ -44,7 +44,7 @@ class RunManager:
             run_folder_path = Path(self.args.output_dir)
             if (run_folder_path.exists() and any(run_folder_path.iterdir())
                     and not getattr(self.args, "resume", False)):
-                raise FileExistsError(f"Output directory is not empty: {run_folder_path}; choose a new RUN_ID")
+                raise FileExistsError(f"Output directory is not empty: {run_folder_path}; missing -args.json; choose a new RUN_ID")
         run_folder_path.mkdir(parents=True, exist_ok=True)
         
         arg_file_path = run_folder_path / "-args.json"
@@ -94,10 +94,13 @@ class RunManager:
             if "question_id" not in data:
                 data = {"question_id": i, **data}
             if getattr(self.args, "resume", False):
-                history = read_history(Path(self.result_directory) /
-                                       f"{data['question_id']}_{data['db_id']}.json")
+                history_path = (Path(self.result_directory) /
+                                f"{data['question_id']}_{data['db_id']}.json")
+                history = read_history(history_path)
                 sql = completed_sql(history)
-                if sql:
+                if history_path.exists() and not sql:
+                    history_path.unlink()
+                if history_path.exists():
                     self.update_final_predictions(data["question_id"], sql, data["db_id"])
                     for step in history:
                         if isinstance(step.get("final_SQL"), dict):

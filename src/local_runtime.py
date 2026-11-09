@@ -21,8 +21,6 @@ def add_local_arguments(parser) -> None:
     parser.add_argument('--embedding_model', default=os.getenv('CHESS_EMBEDDING_MODEL'))
     parser.add_argument('--db_root_directory', help='Directory containing the database folders')
     parser.add_argument('--output_dir')
-    parser.add_argument('--resume', action='store_true',
-                        help='Resume output_dir using its saved configuration')
 
 
 def configure_local_runtime(args, parser) -> None:

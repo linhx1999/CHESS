@@ -4,13 +4,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 # Edit the initialization below; trailing CLI arguments override Python options.
 DATASET="bird_dev"
-MODEL_NAME="Ministral-3-14B-Reasoning-2512"
-RUN_ID="run_1"
-export OPENAI_API_BASE="http://127.0.0.1:8000/v1"
+RUN_ID="run_3"
+
+export OPENAI_API_BASE="https://llm-80oiqtb4br9yy56x.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
 export OPENAI_API_KEY="EMPTY"
+MODEL_NAME="qwen3.6-35b-a3b"
+
+# export OPENAI_API_BASE="http://127.0.0.1:8000/v1"
+# export OPENAI_API_KEY="EMPTY"
+# MODEL_NAME="Ministral-3-14B-Reasoning-2512"
 TEMPERATURE=0
-MAX_TOKENS=16384
-WORKERS=1
+MAX_TOKENS=8192
+WORKERS=8
 EMBEDDING_BASE_URL="http://127.0.0.1:9000/v1"
 EMBEDDING_MODEL="bge-m3"
 export CHESS_EMBEDDING_API_KEY="EMPTY"

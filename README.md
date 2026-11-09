@@ -145,8 +145,9 @@ Results are written to
 `outputs/chess_bird_dev_Ministral-3-14B-Reasoning-2512_run_1/` by default. The
 primary prediction JSON has exactly the same basename as the directory; no
 `predict_dev.json` is produced. CHESS's native logs and intermediate files remain
-in the same directory. A nonempty output directory is rejected: change `RUN_ID`
-or pass `--output_dir` for another run.
+in the same directory. An existing output directory with `-args.json` is resumed
+automatically. Change `RUN_ID` or pass a new `--output_dir` to start another run.
+A nonempty directory without `-args.json` is rejected.
 
 The primary JSON contains ordered zero-based keys and values formatted as
 `SQL\t----- bird -----\tdatabase_id`. Failed or unfinished records retain their
@@ -167,14 +168,16 @@ git diff --check
 
 ### Resuming an interrupted run
 
-Supply the original directory explicitly. Resume restores its `-args.json`
+Run the same command again; no resume flag is needed. To resume a different
+existing run, supply its original directory with `--output_dir`. The program
+automatically restores its `-args.json`
 (model, endpoint, generation parameters, dataset and pipeline configuration),
 while allowing the current worker count and log level. The API key comes from
 `OPENAI_API_KEY`; the script preserves an exported key.
 
 ```bash
 # Set OPENAI_API_KEY to your restored account's key in the shell first.
-bash run_bird_dev.sh --resume \
+bash run_bird_dev.sh \
   --output_dir outputs/chess_bird_dev_qwen3.6-35b-a3b_run_1
 ```
 
@@ -184,8 +187,9 @@ For the interrupted Qwen run this retains 309 questions and retries 1,225.
 This is a legacy compatibility rule, not proof that no unrecorded agent error
 occurred; SQL correctness is not a completion criterion. New attempts record an
 explicit completion status, including swallowed agent/model failures. Partial,
-failed and malformed records are retried. Retained histories are untouched;
-retried histories are overwritten only when that question starts. Predictions
+failed and malformed per-question JSON files are deleted during resume setup;
+questions with missing files are queued for retry. Retained histories are untouched.
+Predictions
 and statistics are rebuilt from retained results, so stale failed SQL is excluded.
 
 Authorization/billing failures (including HTTP 401/402/403 and insufficient quota)
