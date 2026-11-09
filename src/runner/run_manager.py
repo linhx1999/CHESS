@@ -1,7 +1,9 @@
 import os
 import json
 from pathlib import Path
-from multiprocessing import Pool
+from multiprocessing import Pool, Event
+from resume import (completed_sql, read_history, init_worker, reset_task,
+                    task_failed, record_failure, check_stop)
 from typing import List, Dict, Any, Tuple
 from langgraph.graph import StateGraph
 
@@ -40,17 +42,20 @@ class RunManager:
         
         if getattr(self.args, "output_dir", None):
             run_folder_path = Path(self.args.output_dir)
-            if run_folder_path.exists() and any(run_folder_path.iterdir()):
+            if (run_folder_path.exists() and any(run_folder_path.iterdir())
+                    and not getattr(self.args, "resume", False)):
                 raise FileExistsError(f"Output directory is not empty: {run_folder_path}; choose a new RUN_ID")
         run_folder_path.mkdir(parents=True, exist_ok=True)
         
         arg_file_path = run_folder_path / "-args.json"
-        with arg_file_path.open('w') as file:
-            json.dump(vars(self.args), file, indent=4)
+        if not getattr(self.args, 'resume', False):
+            with arg_file_path.open('w') as file:
+                json.dump(vars(self.args), file, indent=4)
 
         final_prediction_file = run_folder_path / "-predictions.json"
-        with final_prediction_file.open('w') as file:
-            json.dump({}, file, indent=4)
+        if not getattr(self.args, 'resume', False) or not final_prediction_file.exists():
+            with final_prediction_file.open('w') as file:
+                json.dump({}, file, indent=4)
         
         log_folder_path = run_folder_path / "logs"
         log_folder_path.mkdir(exist_ok=True)
@@ -82,28 +87,51 @@ class RunManager:
         Args:
             dataset (List[Dict[str, Any]]): The dataset containing task information.
         """
+        # Histories are the source of truth, including after an interrupted JSON write.
+        prediction_path = Path(self.result_directory) / "-predictions.json"
+        prediction_path.write_text("{}")
         for i, data in enumerate(dataset):
             if "question_id" not in data:
                 data = {"question_id": i, **data}
+            if getattr(self.args, "resume", False):
+                history = read_history(Path(self.result_directory) /
+                                       f"{data['question_id']}_{data['db_id']}.json")
+                sql = completed_sql(history)
+                if sql:
+                    self.update_final_predictions(data["question_id"], sql, data["db_id"])
+                    for step in history:
+                        if isinstance(step.get("final_SQL"), dict):
+                            self.statistics_manager.update_stats(
+                                data["db_id"], data["question_id"], "final_SQL", step["final_SQL"])
+                    continue
             self.update_final_predictions(data["question_id"])
             task = Task(**data)
             self.tasks.append(task)
         self.total_number_of_tasks = len(self.tasks)
-        print(f"Total number of tasks: {self.total_number_of_tasks}")
+        self.statistics_manager.dump_statistics_to_file()
+        print(f"Retained: {len(dataset) - len(self.tasks)}; pending: {len(self.tasks)}")
 
     def run_tasks(self):
         """Runs the tasks using a pool of workers."""
         print(f"Running tasks with {self.args.num_workers} workers.")
+        stop = Event()
+        init_worker(stop)
         if self.args.num_workers > 1:
-            with Pool(self.args.num_workers) as pool:
-                for task in self.tasks:
-                    pool.apply_async(self.worker, args=(task,), callback=self.task_done)
-                pool.close()
-                pool.join()
+            with Pool(self.args.num_workers, initializer=init_worker, initargs=(stop,)) as pool:
+                # Submit at most one batch; a fatal error prevents all further batches.
+                for start in range(0, len(self.tasks), self.args.num_workers):
+                    if stop.is_set():
+                        break
+                    batch = self.tasks[start:start + self.args.num_workers]
+                    for log in pool.imap_unordered(self.worker, batch):
+                        self.task_done(log)
         else:
             for task in self.tasks:
-                log = self.worker(task)
-                self.task_done(log)
+                if stop.is_set():
+                    break
+                self.task_done(self.worker(task))
+        if stop.is_set():
+            raise RuntimeError("API authorization/billing failure; progress saved. Fix account and resume.")
 
     def worker(self, task: Task) -> Tuple[Any, str, int]:
         """
@@ -116,22 +144,37 @@ class RunManager:
             tuple: The state of the task processing and task identifiers.
         """
         print(f"Initializing task: {task.db_id} {task.question_id}")
-        DatabaseManager(db_mode=self.args.data_mode, db_id=task.db_id)
         logger = Logger(db_id=task.db_id, question_id=task.question_id, result_directory=self.result_directory)
         logger._set_log_level(self.args.log_level)
         logger.log(f"Processing task: {task.db_id} {task.question_id}", "info")
 
-        team = build_team(self.args.config)
-        thread_id = f"{self.args.run_start_time}_{task.db_id}_{task.question_id}"
-        thread_config = {"configurable": {"thread_id": thread_id}}
-        state_values =  SystemState(task=task, 
-                                    tentative_schema=DatabaseManager().get_db_schema(), 
-                                    execution_history=[])
-        thread_config["recursion_limit"] = 50
-        for state_dict in team.stream(state_values, thread_config, stream_mode="values"):
-            logger.log("________________________________________________________________________________________")
-            continue
-        system_state = SystemState(**state_dict)
+        reset_task()
+        history = [{"tool_name": "run_status", "status": "running"}]
+        logger.dump_history_to_file(history)
+        system_state = None
+        try:
+            check_stop()
+            DatabaseManager(db_mode=self.args.data_mode, db_id=task.db_id)
+            team = build_team(self.args.config)
+            thread_id = f"{self.args.run_start_time}_{task.db_id}_{task.question_id}"
+            thread_config = {"configurable": {"thread_id": thread_id}, "recursion_limit": 50}
+            state_values = SystemState(task=task,
+                                      tentative_schema=DatabaseManager().get_db_schema(),
+                                      execution_history=history)
+            for state_dict in team.stream(state_values, thread_config, stream_mode="values"):
+                system_state = SystemState(**state_dict)
+                check_stop()
+            history = system_state.execution_history
+        except Exception as error:
+            record_failure(error)
+            # Tools may have persisted progress before the graph raised.
+            history = read_history(Path(self.result_directory) /
+                                   f"{task.question_id}_{task.db_id}.json") or history
+        history.append({"tool_name": "run_status",
+                        "status": "error" if task_failed() else "success"})
+        logger.dump_history_to_file(history)
+        if system_state is not None:
+            system_state.execution_history = history
         return system_state, task.db_id, task.question_id
 
     def pick_final_sql(self, state: SystemState):
@@ -202,7 +245,9 @@ class RunManager:
             log (tuple): The log information of the task processing.
         """
         state, db_id, question_id = log
-        if state is None:
+        if state is None or not completed_sql(state.execution_history):
+            self.processed_tasks += 1
+            self.plot_progress()
             return
         for step in state.execution_history:
             if "tool_name" in step and step["tool_name"] == "evaluation":

@@ -3,6 +3,7 @@ from typing import Dict, Any
 import re
 import time
 
+from resume import check_stop, record_failure
 from runner.logger import Logger
 from workflow.system_state import SystemState
 
@@ -16,11 +17,13 @@ class Tool(ABC):
         start_time = time.time()
         state.executing_tool = self.tool_name
         try:
+            check_stop()
             self._run(state)
             run_status = {
                 "status": "success",
             }
         except Exception as e:
+            record_failure(e)
             Logger().log(f"Tool '{self.tool_name}'\n{type(e)}: {e}\n", "error", state.task)
             state.errors[self.tool_name] = f"{type(e)}: <{e}>"
             run_status = {

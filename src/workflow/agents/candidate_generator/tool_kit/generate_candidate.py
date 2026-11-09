@@ -1,3 +1,4 @@
+from resume import record_failure
 from typing import Dict
 from pydantic import BaseModel
 
@@ -50,6 +51,7 @@ class GenerateCandidate(Tool):
                     }
                     request_list.append(request_kwargs)
                 except Exception as e:
+                    record_failure(e)
                     print(f"Error in creating request_kwargs for generator {generator_config.template_name}: {e}")
                     continue
             
@@ -63,6 +65,7 @@ class GenerateCandidate(Tool):
                 )
                 response = [res for sublist in response for res in sublist]
             except Exception as e:
+                record_failure(e)
                 print(f"Error in generating SQL queries for generator {generator_config.template_name}: {e}")
                 continue
             for res in response:
@@ -73,6 +76,7 @@ class GenerateCandidate(Tool):
                     # state.SQL_meta_infos[self.tool_name].append(sql_meta_info)
                     self.generators_queries[generator_config.template_name].append(sql_meta_info)
                 except Exception as e:
+                    record_failure(e)
                     print(f"Error in creating SQLMetaInfo for generator {generator_config.template_name}: {e}")
                     continue
             request_list = []

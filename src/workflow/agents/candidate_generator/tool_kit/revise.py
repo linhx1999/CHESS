@@ -1,3 +1,4 @@
+from resume import record_failure
 from typing import Dict
 
 from llm.models import async_llm_chain_call, get_llm_chain
@@ -31,6 +32,7 @@ class Revise(Tool):
             key_to_refine = list(state.SQL_meta_infos.keys())[-1]
             target_SQL_meta_infos = state.SQL_meta_infos[key_to_refine]
         except Exception as e:
+            record_failure(e)
             print(f"Error in Checker: {e}")
             return
         if key_to_refine.startswith(self.tool_name):
@@ -59,6 +61,7 @@ class Revise(Tool):
                 }
                 request_list.append(request_kwargs)
             except Exception as e:
+                record_failure(e)
                 print(f"Error in Checker while creating request list: {e}")
                 continue
                 
@@ -72,6 +75,7 @@ class Revise(Tool):
             )
             response = [r[0] for r in response]
         except Exception as e:
+            record_failure(e)
             print(f"Error in Checker while getting response: {e}")
             response = []
         index = 0
@@ -89,6 +93,7 @@ class Revise(Tool):
                         "refined_sql_query": target_SQL_meta_info.SQL
                     }
             except Exception as e:
+                record_failure(e)
                 print(f"Error in Checker while updating SQL meta info: {e}")
                 refinement_response = {
                     "refined_sql_query": target_SQL_meta_info.SQL
@@ -144,5 +149,3 @@ class Revise(Tool):
             "refined_SQL_id": refined_SQL_id,
             "candidates": candidates
         }
-            
-    

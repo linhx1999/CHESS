@@ -21,6 +21,8 @@ def add_local_arguments(parser) -> None:
     parser.add_argument('--embedding_model', default=os.getenv('CHESS_EMBEDDING_MODEL'))
     parser.add_argument('--db_root_directory', help='Directory containing the database folders')
     parser.add_argument('--output_dir')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume output_dir using its saved configuration')
 
 
 def configure_local_runtime(args, parser) -> None:
@@ -68,6 +70,8 @@ def local_chat_params() -> dict | None:
         'openai_api_key': os.getenv('OPENAI_API_KEY') or 'EMPTY',
         'temperature': float(os.environ.get('CHESS_TEMPERATURE', '0')),
         'max_tokens': int(os.environ.get('CHESS_MAX_TOKENS', '16384')),
+        'timeout': float(os.environ.get('CHESS_REQUEST_TIMEOUT', '120')),
+        'max_retries': int(os.environ.get('CHESS_MAX_RETRIES', '2')),
     }
 
 

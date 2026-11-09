@@ -1,3 +1,5 @@
+from resume import record_failure
+
 import queue
 from concurrent.futures import ThreadPoolExecutor
 import logging
@@ -19,6 +21,7 @@ def _threaded(func):
             result = func(*args, **kwargs)
             result_queue.put((thread_id, result))
         except Exception as e:
+            record_failure(e)
             logging.error(f"Exception in thread with kwargs: {kwargs}\n{e}")
             result_queue.put((thread_id, None))
     return wrapper
@@ -35,6 +38,9 @@ def ordered_concurrent_function_calls(call_list: list) -> list:
     Returns:
         list: A list of results from the functions.
     """
+    if not call_list:
+        return []
+
     result_queue = queue.Queue()
     with ThreadPoolExecutor(max_workers=len(call_list)) as executor:
         for idx, call in enumerate(call_list):

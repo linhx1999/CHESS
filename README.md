@@ -164,3 +164,31 @@ python -m compileall -q src tests
 bash -n run_bird_dev.sh
 git diff --check
 ```
+
+### Resuming an interrupted run
+
+Supply the original directory explicitly. Resume restores its `-args.json`
+(model, endpoint, generation parameters, dataset and pipeline configuration),
+while allowing the current worker count and log level. The API key comes from
+`OPENAI_API_KEY`; the script preserves an exported key.
+
+```bash
+# Set OPENAI_API_KEY to your restored account's key in the shell first.
+bash run_bird_dev.sh --resume \
+  --output_dir outputs/chess_bird_dev_qwen3.6-35b-a3b_run_1
+```
+
+Legacy results are retained only when they have nonempty final SQL and all nine
+IR/SS/CG/evaluation tools recorded as successful, with no recorded tool error.
+For the interrupted Qwen run this retains 309 questions and retries 1,225.
+This is a legacy compatibility rule, not proof that no unrecorded agent error
+occurred; SQL correctness is not a completion criterion. New attempts record an
+explicit completion status, including swallowed agent/model failures. Partial,
+failed and malformed records are retried. Retained histories are untouched;
+retried histories are overwritten only when that question starts. Predictions
+and statistics are rebuilt from retained results, so stale failed SQL is excluded.
+
+Authorization/billing failures (including HTTP 401/402/403 and insufficient quota)
+stop new work and return a nonzero exit status after saving/exporting progress.
+At most one worker-sized batch is submitted at a time; already running API
+requests can finish. Restore access and repeat the same command to continue.

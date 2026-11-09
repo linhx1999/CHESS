@@ -23,11 +23,15 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--pick_final_sql', type=bool, default=False, help="Pick the final SQL from the generated SQLs.")
     add_local_arguments(parser)
     args = parser.parse_args()
+    if args.resume:
+        from resume import restore_arguments
+        restore_arguments(args)
     configure_local_runtime(args, parser)
 
     args.run_start_time = datetime.now().isoformat()
-    with open(args.config, 'r') as file:
-        args.config=yaml.safe_load(file)
+    if not isinstance(args.config, dict):
+        with open(args.config, 'r') as file:
+            args.config=yaml.safe_load(file)
     
     return args
 

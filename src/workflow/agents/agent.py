@@ -1,3 +1,4 @@
+from resume import check_stop, record_failure
 from workflow.system_state import SystemState
 from workflow.agents.tool import Tool
 
@@ -36,6 +37,7 @@ class Agent:
         
         try:
             for i in range(10):
+                check_stop()
                 response = self.call_agent(system_state)
                 print(f"Agent {self.name} response: {response}")
                 if self.is_done(response):
@@ -47,8 +49,12 @@ class Agent:
                     tool_response = self.call_tool(tool, system_state)
                     self.chat_history.append({"role": "tool_message", "content": tool_response})
                 except Exception as e:
+                    record_failure(e)
                     print(f"Error in tool {tool_name}: {e}")
+            else:
+                record_failure(RuntimeError("Agent did not finish within 10 steps"))
         except Exception as e:
+            record_failure(e)
             print(f"Error in agent {self.name}: {e}")
             
         return system_state

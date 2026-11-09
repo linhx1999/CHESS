@@ -1,6 +1,8 @@
 import sqlite3
 import random
 import logging
+import time
+from contextlib import closing
 from typing import Any, Union, List, Dict
 from func_timeout import func_timeout, FunctionTimedOut
 from multiprocessing import Process, Queue
@@ -18,39 +20,50 @@ class TimeoutException(Exception):
 
 
 def execute_sql(db_path: str, sql: str, fetch: Union[str, int] = "all", timeout: int = 60) -> Any:
-    class QueryThread(threading.Thread):
-        def __init__(self):
-            threading.Thread.__init__(self)
-            self.result = None
-            self.exception = None
+    """Execute SQL with a deadline that interrupts SQLite itself.
 
-        def run(self):
-            try:
-                with sqlite3.connect(db_path, timeout=60) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(sql)
-                    if fetch == "all":
-                        self.result = cursor.fetchall()
-                    elif fetch == "one":
-                        self.result = cursor.fetchone()
-                    elif fetch == "random":
-                        samples = cursor.fetchmany(10)
-                        self.result = random.choice(samples) if samples else []
-                    elif isinstance(fetch, int):
-                        self.result = cursor.fetchmany(fetch)
-                    else:
-                        raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', or an integer.")
-            except Exception as e:
-                self.exception = e
-    query_thread = QueryThread()
-    query_thread.start()
-    query_thread.join(timeout)
-    if query_thread.is_alive():
-        raise TimeoutError(f"SQL query execution exceeded the timeout of {timeout} seconds.")
-    if query_thread.exception:
-        # logging.error(f"Error in execute_sql: {query_thread.exception}\nSQL: {sql}")
-        raise query_thread.exception
-    return query_thread.result
+    A timed thread join does not cancel a query and can leave non-daemon
+    threads preventing multiprocessing workers from exiting.
+    """
+    deadline = time.monotonic() + max(0, timeout)
+
+    def expired():
+        return time.monotonic() >= deadline
+
+    def timeout_error():
+        return TimeoutError(f"SQL query execution exceeded the timeout of {timeout} seconds.")
+
+    if expired():
+        raise timeout_error()
+    # The busy timeout also bounds waits for database locks, during which
+    # SQLite does not invoke the progress handler. closing() is necessary:
+    # the connection's own context manager only commits or rolls back.
+    with closing(sqlite3.connect(db_path, timeout=max(0, deadline - time.monotonic()))) as conn:
+        conn.set_progress_handler(expired, 1000)
+        try:
+            with conn:
+                cursor = conn.cursor()
+                cursor.execute(sql)
+                if fetch == "all":
+                    result = cursor.fetchall()
+                elif fetch == "one":
+                    result = cursor.fetchone()
+                elif fetch == "random":
+                    samples = cursor.fetchmany(10)
+                    result = random.choice(samples) if samples else []
+                elif isinstance(fetch, int):
+                    result = cursor.fetchmany(fetch)
+                else:
+                    raise ValueError("Invalid fetch argument. Must be 'all', 'one', 'random', or an integer.")
+        except sqlite3.OperationalError as exc:
+            if expired():
+                raise timeout_error() from exc
+            raise
+        finally:
+            conn.set_progress_handler(None, 0)
+        if expired():
+            raise timeout_error()
+        return result
 
 
 def _clean_sql(sql: str) -> str:

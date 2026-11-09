@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import local_runtime as runtime
+from threading_utils import ordered_concurrent_function_calls
 
 
 class LocalRuntimeTests(unittest.TestCase):
@@ -40,6 +41,11 @@ class LocalRuntimeTests(unittest.TestCase):
                 self.assertEqual(chat.call_args.kwargs['temperature'], 0)
                 self.assertEqual(chat.call_args.kwargs['model'], 'local-model')
                 self.assertEqual(chat.call_args.kwargs['max_tokens'], 16384)
+                self.assertEqual(chat.call_args.kwargs['timeout'], 120)
+                self.assertEqual(chat.call_args.kwargs['max_retries'], 2)
+
+    def test_empty_concurrent_call_list(self):
+        self.assertEqual(ordered_concurrent_function_calls([]), [])
 
     def test_local_empty_response_does_not_fallback(self):
         tree = ast.parse(Path('src/llm/models.py').read_text())
@@ -53,6 +59,7 @@ class LocalRuntimeTests(unittest.TestCase):
         prompt.__or__ = Mock(return_value=engine)
         prompt.invoke.return_value = types.SimpleNamespace(messages=[types.SimpleNamespace(content='hello')])
         scope = {'Any': object, 'Dict': dict, 'os': os, 'Logger': Mock,
+                 'check_stop': Mock(), 'record_failure': Mock(),
                  'OutputParserException': ParserError, 'get_llm_chain': fallback,
                  'OutputFixingParser': types.SimpleNamespace(from_llm=Mock(return_value=Mock()))}
         # The original parser-error path composes a Runnable chain. A tiny stand-in suffices.
@@ -141,8 +148,9 @@ class LocalRuntimeTests(unittest.TestCase):
         result = subprocess.run(['bash', '-c', script], env=os.environ.copy(),
                                 capture_output=True, text=True, check=True)
         self.assertIn('--temperature 0 ', result.stdout)
-        self.assertIn('http://127.0.0.1:8000/v1', result.stdout)
-        self.assertIn('--max_tokens 16384', result.stdout)
+        self.assertIn('--num_workers 8 ', result.stdout)
+        self.assertIn('--local_model Ministral-3-14B-Reasoning-2512 ', result.stdout)
+        self.assertIn('--max_tokens 8192', result.stdout)
         self.assertNotIn('predict_dev.json', result.stdout)
 
 

@@ -2,6 +2,7 @@ import os
 from copy import deepcopy
 
 from local_runtime import local_chat_params
+from resume import check_stop, record_failure
 
 from typing import Any, Dict, List
 
@@ -75,6 +76,7 @@ def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[s
     """
     logger = Logger()
     for attempt in range(max_attempts):
+        check_stop()
         try:
             # chain = prompt | engine | parser
             chain = prompt | engine
@@ -111,9 +113,11 @@ def call_llm_chain(prompt: Any, engine: Any, parser: Any, request_kwargs: Dict[s
             new_parser = OutputFixingParser.from_llm(parser=parser, llm=engine)
             chain = prompt | engine | new_parser
             if attempt == max_attempts - 1:
+                record_failure(e)
                 logger.log(f"call_chain: {e}", "error")
                 raise e
         except Exception as e:
+            record_failure(e)
             # if attempt < max_attempts - 1:
             #     logger.log(f"Failed to invoke the chain {attempt + 1} times.\n{type(e)}\n{e}", "warning")
             #     sleep_time = (backoff_base ** attempt) + random.uniform(0, jitter_max)
@@ -191,10 +195,12 @@ def call_engine(message: str, engine: Any, max_attempts: int = 12, backoff_base:
     """
     logger = Logger()
     for attempt in range(max_attempts):
+        check_stop()
         try:
             output = engine.invoke(message)
             return output.content
         except Exception as e:
+            record_failure(e)
             # if attempt < max_attempts - 1:
             #     logger.log(f"Failed to invoke the chain {attempt + 1} times.\n{type(e)}\n{e}", "warning")
             #     sleep_time = (backoff_base ** attempt) + random.uniform(0, jitter_max)
